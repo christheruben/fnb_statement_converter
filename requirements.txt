@@ -1,0 +1,11 @@
+camelot-py[cv]
+camelot
+camelot-py[plot]
+opencv-python
+ghostscript
+pandas
+openpyxl
+python-dateutil
+fastapi
+uvicorn
+python-multipart
