@@ -4,6 +4,8 @@ import io
 
 from parser import extract_statement_from_pdf
 import pandas as pd
+from fastapi.middleware.cors import CORSMiddleware
+
 
 
 # Define FastAPI app
@@ -12,6 +14,17 @@ app = FastAPI(
     title="FNB PDF Bank Statement Converter",
     description="Convert FNB bank statement PDFs to CSV or JSON formats.",
     version="1.0.0",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 @app.get("/")
