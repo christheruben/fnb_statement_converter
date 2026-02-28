@@ -8,4 +8,5 @@ openpyxl
 python-dateutil
 fastapi
 uvicorn
+chunknorris
 python-multipart
