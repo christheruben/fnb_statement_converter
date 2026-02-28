@@ -1,0 +1,5 @@
+*.pdf
+.env
+__pycache__/
+*.md
+*.json

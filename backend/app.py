@@ -132,3 +132,46 @@ async def categorize(request: CategorizeRequest):
         raise HTTPException(status_code=500, detail=f"Categorization failed: {e}")
 
     return {"transactions": categorized}
+
+
+@app.post("/extract-and-categorize")
+async def extract_and_categorize(
+    file: UploadFile = File(..., description="PDF bank statement"),
+):
+    if not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Invalid file type. Please upload a PDF file.")
+
+    pdf_bytes = await file.read()
+
+    try:
+        markdown_text = extract_markdown_from_bytes(pdf_bytes)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to parse PDF: {e}")
+
+    try:
+        statement_start, statement_end = extract_statement_period(markdown_text)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    account_number = extract_account_number(markdown_text)
+    opening_balance, closing_balance = extract_statement_balances(markdown_text)
+    transactions = extract_transactions(markdown_text, statement_start, statement_end)
+
+    if not transactions:
+        return {"message": "No transaction data found in the provided PDF.", "transactions": []}
+
+    try:
+        categorized = categorize_transactions(transactions)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Categorization failed: {e}")
+
+    return {
+        "account_number": account_number,
+        "statement_period": {
+            "start_date": statement_start.strftime("%Y-%m-%d"),
+            "end_date": statement_end.strftime("%Y-%m-%d"),
+        },
+        "opening_balance": opening_balance,
+        "closing_balance": closing_balance,
+        "transactions": categorized,
+    }
