@@ -11,7 +11,7 @@ from chunknorris.pipelines import BasePipeline
 # -------------------------
 
 PDF_PATH = "./EASY_ACCOUNT_61.pdf"
-OUTPUT_JSON = "transactions.json"
+# OUTPUT_JSON = "transactions.json"  # Option 2: Uncomment to enable file output
 
 
 # -------------------------
@@ -19,18 +19,28 @@ OUTPUT_JSON = "transactions.json"
 # -------------------------
 
 def extract_markdown_from_pdf(pdf_path: str) -> str:
+    """Used when running statement_parser.py standalone for testing."""
     pipeline = BasePipeline(
         parser=PdfParser(use_ocr="never"),
         chunker=MarkdownChunker()
     )
-
     chunks = pipeline.chunk_file(filepath=pdf_path)
 
     # 🔥 COMMENTED OUT FOR NOW (debug only)
     # pipeline.save_chunks(chunks, output_filename="chunks.md")
 
-    full_markdown = "\n".join(chunk.get_text() for chunk in chunks)
-    return full_markdown
+    return "\n".join(chunk.get_text() for chunk in chunks)
+
+
+def extract_markdown_from_bytes(pdf_bytes: bytes) -> str:
+    """Used by the API - accepts raw bytes, no temp file needed."""
+    pipeline = BasePipeline(
+        parser=PdfParser(use_ocr="never"),
+        chunker=MarkdownChunker()
+    )
+    chunks = pipeline.chunk_string(pdf_bytes)
+    return "\n".join(chunk.get_text() for chunk in chunks)
+
 
 # -------------------------
 # METADATA EXTRACTION
@@ -72,6 +82,7 @@ def extract_statement_balances(markdown_text: str):
 
     return opening_balance, closing_balance
 
+
 # -------------------------
 # STATEMENT PERIOD EXTRACTION
 # -------------------------
@@ -97,6 +108,7 @@ def extract_statement_period(markdown_text: str):
 
     return start_date, end_date
 
+
 # -------------------------
 # TRANSACTION PARSER
 # -------------------------
@@ -112,7 +124,6 @@ def parse_amount(value: str):
         return None, None
 
     value_clean = value.strip().replace(",", "")
-    txn_type = "debit"
 
     if "Cr" in value_clean:
         txn_type = "credit"
@@ -140,9 +151,7 @@ def normalize_date(date_str, statement_start, statement_end):
     day_month = datetime.strptime(date_str, "%d %b")
     month = day_month.month
 
-    # If statement crosses year boundary
     if statement_start.year != statement_end.year:
-        # Months >= start month belong to start year
         if month >= statement_start.month:
             year = statement_start.year
         else:
@@ -164,7 +173,6 @@ def split_multi_date_rows(date_col, description):
         return [(dates[0] if dates else None, description)]
 
     parts = DATE_PATTERN.split(date_col)
-    # Format: ['', date1, text1, date2, text2, ...]
     rows = []
 
     for i in range(1, len(parts), 2):
@@ -214,7 +222,6 @@ def extract_transactions(markdown_text: str, statement_start, statement_end):
                 continue
 
             normalized_date = normalize_date(date_str, statement_start, statement_end)
-
             amount, txn_type = parse_amount(amount_raw)
             balance, _ = parse_amount(balance_raw)
 
@@ -232,6 +239,7 @@ def extract_transactions(markdown_text: str, statement_start, statement_end):
 # -------------------------
 # MAIN
 # -------------------------
+
 def main():
     print("Extracting markdown from PDF...")
     markdown_text = extract_markdown_from_pdf(PDF_PATH)
@@ -244,29 +252,27 @@ def main():
     opening_balance, closing_balance = extract_statement_balances(markdown_text)
 
     print("Parsing transactions...")
-    transactions = extract_transactions(
-        markdown_text,
-        statement_start,
-        statement_end
-    )
-
+    transactions = extract_transactions(markdown_text, statement_start, statement_end)
     print(f"Found {len(transactions)} transactions.")
 
     output = {
         "account_number": account_number,
         "statement_period": {
             "start_date": statement_start.strftime("%Y-%m-%d"),
-            "end_date": statement_end.strftime("%Y-%m-%d")
+            "end_date": statement_end.strftime("%Y-%m-%d"),
         },
         "opening_balance": opening_balance,
         "closing_balance": closing_balance,
-        "transactions": transactions
+        "transactions": transactions,
     }
 
-    with open(OUTPUT_JSON, "w", encoding="utf-8") as f:
-        json.dump(output, f, indent=2)
+    # Option 2: Uncomment to save output to a JSON file for auditing/logging
+    # with open(OUTPUT_JSON, "w", encoding="utf-8") as f:
+    #     json.dump(output, f, indent=2)
+    # print(f"Statement data saved to {OUTPUT_JSON}")
 
-    print(f"Statement data saved to {OUTPUT_JSON}")
+    print(json.dumps(output, indent=2))
+
 
 if __name__ == "__main__":
     main()
