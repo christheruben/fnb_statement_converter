@@ -1,8 +1,10 @@
 import io
+from typing import List
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 import pandas as pd
 
 from statement_parser import (
@@ -12,6 +14,7 @@ from statement_parser import (
     extract_statement_period,
     extract_transactions,
 )
+from trans_classifier import categorize_transactions
 
 app = FastAPI(
     title="FNB PDF Bank Statement Converter",
@@ -30,6 +33,25 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+# -------------------------
+# REQUEST MODELS
+# -------------------------
+
+class Transaction(BaseModel):
+    date: str
+    description: str
+    amount: float | None
+    balance: float | None
+    type: str
+
+class CategorizeRequest(BaseModel):
+    transactions: List[Transaction]
+
+
+# -------------------------
+# ROUTES
+# -------------------------
 
 @app.get("/")
 def read_root():
@@ -94,3 +116,19 @@ async def extract_statement(
             media_type="text/csv",
             headers={"Content-Disposition": f"attachment; filename={file.filename}.csv"},
         )
+
+
+@app.post("/categorize")
+async def categorize(request: CategorizeRequest):
+    """
+    Accepts a list of transactions and returns them with a 'category' field added.
+    Uses rules first, then falls back to Groq for anything unmatched.
+    """
+    transactions = [txn.model_dump() for txn in request.transactions]
+
+    try:
+        categorized = categorize_transactions(transactions)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Categorization failed: {e}")
+
+    return {"transactions": categorized}

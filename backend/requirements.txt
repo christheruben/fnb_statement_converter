@@ -10,3 +10,5 @@ fastapi
 uvicorn
 chunknorris
 python-multipart
+groq
+dotenv
