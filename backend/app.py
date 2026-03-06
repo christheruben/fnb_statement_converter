@@ -4,6 +4,7 @@ from typing import List
 from fastapi import FastAPI, UploadFile, File, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
+
 from pydantic import BaseModel
 import pandas as pd
 
@@ -15,6 +16,8 @@ from statement_parser import (
     extract_transactions,
 )
 from trans_classifier import categorize_transactions
+from analyzer import analyze, generate_pie_chart
+
 
 app = FastAPI(
     title="FNB PDF Bank Statement Converter",
@@ -173,5 +176,82 @@ async def extract_and_categorize(
         },
         "opening_balance": opening_balance,
         "closing_balance": closing_balance,
+        "transactions": categorized,
+    }
+
+
+@app.post("/analyze")
+async def analyze_transactions(request: CategorizeRequest):
+    """
+    Accepts already-categorized transactions and returns a spending summary:
+    total income, total spend, net savings, savings rate, and a per-category
+    breakdown with amounts and percentages.
+    """
+    transactions = [txn.model_dump() for txn in request.transactions]
+    return analyze(transactions)
+
+
+@app.post("/analyze/chart")
+async def spending_chart(request: CategorizeRequest):
+    """
+    Returns a PNG pie chart of spending by category.
+    """
+    transactions = [txn.model_dump() for txn in request.transactions]
+    summary = analyze(transactions)
+
+    try:
+        png_bytes = generate_pie_chart(summary["category_breakdown"])
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return Response(content=png_bytes, media_type="image/png")
+
+
+@app.post("/extract-and-analyze")
+async def extract_and_analyze(
+    file: UploadFile = File(..., description="PDF bank statement"),
+):
+    """
+    Full pipeline: extract → categorize → analyze.
+    Returns statement metadata + full analytics summary in one call.
+    """
+    if not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Invalid file type. Please upload a PDF file.")
+
+    pdf_bytes = await file.read()
+
+    try:
+        markdown_text = extract_markdown_from_bytes(pdf_bytes)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to parse PDF: {e}")
+
+    try:
+        statement_start, statement_end = extract_statement_period(markdown_text)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    account_number = extract_account_number(markdown_text)
+    opening_balance, closing_balance = extract_statement_balances(markdown_text)
+    transactions = extract_transactions(markdown_text, statement_start, statement_end)
+
+    if not transactions:
+        return {"message": "No transaction data found in the provided PDF.", "analytics": None}
+
+    try:
+        categorized = categorize_transactions(transactions)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Categorization failed: {e}")
+
+    summary = analyze(categorized)
+
+    return {
+        "account_number": account_number,
+        "statement_period": {
+            "start_date": statement_start.strftime("%Y-%m-%d"),
+            "end_date": statement_end.strftime("%Y-%m-%d"),
+        },
+        "opening_balance": opening_balance,
+        "closing_balance": closing_balance,
+        "analytics": summary,
         "transactions": categorized,
     }

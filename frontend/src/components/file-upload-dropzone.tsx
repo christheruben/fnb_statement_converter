@@ -25,6 +25,18 @@ type ExtractResponse = {
   transactions: Transaction[]
 }
 
+type AnalyticsResponse = {
+  total_income: number
+  total_spend: number
+  net_savings: number
+  savings_rate: number
+  category_breakdown: {
+    category: string
+    amount: number
+    percentage: number
+  }[]
+}
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
 
 async function uploadStatement(file: File): Promise<ExtractResponse> {
@@ -52,11 +64,27 @@ async function uploadStatement(file: File): Promise<ExtractResponse> {
   return response.json()
 }
 
+async function analyzeTransactions(transactions: Transaction[]): Promise<AnalyticsResponse> {
+  const response = await fetch(`${API_BASE_URL}/analyze`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ transactions }),
+  })
+
+  if (!response.ok) {
+    throw new Error(`Analysis failed with status ${response.status}`)
+  }
+
+  return response.json()
+}
+
 export function FileUploadDropZone() {
   const [isDragActive, setIsDragActive] = useState(false)
   const [status, setStatus] = useState<UploadStatus>('idle')
   const [fileName, setFileName] = useState<string>('')
   const [data, setData] = useState<ExtractResponse | null>(null)
+  const [analytics, setAnalytics] = useState<AnalyticsResponse | null>(null)
+  const [analyticsError, setAnalyticsError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleDrag = (e: React.DragEvent<HTMLDivElement>) => {
@@ -88,21 +116,36 @@ export function FileUploadDropZone() {
     setFileName(file.name)
     setStatus('uploading')
     setData(null)
+    setAnalytics(null)
+    setAnalyticsError(null)
+
+    let result: ExtractResponse | null = null
 
     try {
-      const result = await uploadStatement(file)
+      result = await uploadStatement(file)
       setData(result)
       setStatus('success')
     } catch (error) {
       console.error('Error uploading file:', error)
       setStatus('error')
       setData(null)
+      return
+    }
+
+    try {
+      const analyticsResult = await analyzeTransactions(result.transactions)
+      setAnalytics(analyticsResult)
+    } catch (error) {
+      console.error('Error analyzing transactions:', error)
+      setAnalyticsError('Analysis failed, but your transactions loaded successfully.')
     }
   }
 
   const reset = () => {
     setStatus('idle')
     setData(null)
+    setAnalytics(null)
+    setAnalyticsError(null)
     setFileName('')
   }
 
@@ -186,6 +229,65 @@ export function FileUploadDropZone() {
     )
   }
 
+  const renderAnalytics = () => {
+    if (analyticsError) {
+      return (
+        <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3">
+          <p className="text-xs text-red-600">{analyticsError}</p>
+        </div>
+      )
+    }
+
+    if (!analytics) return null
+
+    return (
+      <div className="mt-4 border rounded-lg bg-card p-4">
+        <h2 className="text-sm font-semibold mb-3">Analytics</h2>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="rounded-lg border bg-card p-3">
+            <p className="text-xs text-muted-foreground">Total Income</p>
+            <p className="text-sm font-semibold text-green-600">R {analytics.total_income.toFixed(2)}</p>
+          </div>
+          <div className="rounded-lg border bg-card p-3">
+            <p className="text-xs text-muted-foreground">Total Spend</p>
+            <p className="text-sm font-semibold text-red-500">R {analytics.total_spend.toFixed(2)}</p>
+          </div>
+          <div className="rounded-lg border bg-card p-3">
+            <p className="text-xs text-muted-foreground">Net Savings</p>
+            <p className={`text-sm font-semibold ${analytics.net_savings >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+              R {analytics.net_savings.toFixed(2)}
+            </p>
+          </div>
+          <div className="rounded-lg border bg-card p-3">
+            <p className="text-xs text-muted-foreground">Savings Rate</p>
+            <p className={`text-sm font-semibold ${analytics.savings_rate >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+              {analytics.savings_rate.toFixed(1)}%
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-3">
+          <h3 className="text-xs font-semibold text-muted-foreground mb-2">Spending by Category</h3>
+          <div className="space-y-2">
+            {analytics.category_breakdown.map((item) => (
+              <div key={item.category} className="flex items-center gap-2">
+                <div className="w-28 text-xs truncate text-muted-foreground">{item.category}</div>
+                <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-primary"
+                    style={{ width: `${item.percentage}%` }}
+                  />
+                </div>
+                <div className="text-xs text-muted-foreground w-10 text-right">{item.percentage}%</div>
+                <div className="text-xs font-medium w-24 text-right">R {item.amount.toFixed(2)}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   const renderTransactionTable = () => {
     if (!data?.transactions.length) return null
 
@@ -262,6 +364,7 @@ export function FileUploadDropZone() {
       </div>
 
       {renderSummary()}
+      {renderAnalytics()}
       {renderTransactionTable()}
     </div>
   )

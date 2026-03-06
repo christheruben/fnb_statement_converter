@@ -3,6 +3,13 @@ import json
 from groq import Groq
 from dotenv import load_dotenv
 
+"""
+This module contains the core logic for categorizing transactions. It includes:
+- A set of hardcoded rules for categorization based on keywords in the description
+- A function to call Groq with uncategorized descriptions using tool calling
+- A main function that applies rules first, then falls back to Groq for anything unmatched
+"""
+
 load_dotenv()  
 
 # -------------------------

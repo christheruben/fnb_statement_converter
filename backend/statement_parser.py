@@ -6,6 +6,13 @@ from chunknorris.chunkers import MarkdownChunker
 from chunknorris.pipelines import BasePipeline
 
 
+"""
+This module contains the core logic for parsing bank statements from PDF files. It includes functions for:
+- Extracting markdown text from PDFs
+- Extracting account numbers and balances
+- Parsing transaction tables, including handling multi-date rows and normalizing dates
+"""
+
 # -------------------------
 # CONFIG
 # -------------------------
