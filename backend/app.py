@@ -1,10 +1,9 @@
 import io
 from typing import List
 
-from fastapi import FastAPI, UploadFile, File, HTTPException, Query
+from fastapi import FastAPI, UploadFile, File, HTTPException, Query, Depends, Response
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
-
 from pydantic import BaseModel
 import pandas as pd
 
@@ -17,6 +16,9 @@ from statement_parser import (
 )
 from trans_classifier import categorize_transactions
 from analyzer import analyze, generate_pie_chart
+from auth import fastapi_users, auth_backend, current_active_user
+from schemas import UserRead, UserCreate, UserUpdate
+from models import User
 
 
 app = FastAPI(
@@ -34,6 +36,29 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+)
+
+
+# -------------------------
+# AUTH ROUTES
+# -------------------------
+
+app.include_router(
+    fastapi_users.get_auth_router(auth_backend),
+    prefix="/auth/jwt",
+    tags=["auth"],
+)
+
+app.include_router(
+    fastapi_users.get_register_router(UserRead, UserCreate),
+    prefix="/auth",
+    tags=["auth"],
+)
+
+app.include_router(
+    fastapi_users.get_users_router(UserRead, UserUpdate),
+    prefix="/users",
+    tags=["users"],
 )
 
 
@@ -61,10 +86,16 @@ def read_root():
     return {"message": "PDF extractor is running. Go to /docs to upload a statement."}
 
 
+@app.get("/me")
+async def get_me(user: User = Depends(current_active_user)):
+    return {"id": user.id, "email": user.email, "name": user.name}
+
+
 @app.post("/extract")
 async def extract_statement(
     file: UploadFile = File(..., description="PDF bank statement"),
     format: str = Query("json", regex="^(json|csv)$", description="Return format: 'json' or 'csv'"),
+    user: User = Depends(current_active_user),
 ):
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Invalid file type. Please upload a PDF file.")
@@ -122,11 +153,10 @@ async def extract_statement(
 
 
 @app.post("/categorize")
-async def categorize(request: CategorizeRequest):
-    """
-    Accepts a list of transactions and returns them with a 'category' field added.
-    Uses rules first, then falls back to Groq for anything unmatched.
-    """
+async def categorize(
+    request: CategorizeRequest,
+    user: User = Depends(current_active_user),
+):
     transactions = [txn.model_dump() for txn in request.transactions]
 
     try:
@@ -140,6 +170,7 @@ async def categorize(request: CategorizeRequest):
 @app.post("/extract-and-categorize")
 async def extract_and_categorize(
     file: UploadFile = File(..., description="PDF bank statement"),
+    user: User = Depends(current_active_user),
 ):
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Invalid file type. Please upload a PDF file.")
@@ -181,21 +212,19 @@ async def extract_and_categorize(
 
 
 @app.post("/analyze")
-async def analyze_transactions(request: CategorizeRequest):
-    """
-    Accepts already-categorized transactions and returns a spending summary:
-    total income, total spend, net savings, savings rate, and a per-category
-    breakdown with amounts and percentages.
-    """
+async def analyze_transactions(
+    request: CategorizeRequest,
+    user: User = Depends(current_active_user),
+):
     transactions = [txn.model_dump() for txn in request.transactions]
     return analyze(transactions)
 
 
 @app.post("/analyze/chart")
-async def spending_chart(request: CategorizeRequest):
-    """
-    Returns a PNG pie chart of spending by category.
-    """
+async def spending_chart(
+    request: CategorizeRequest,
+    user: User = Depends(current_active_user),
+):
     transactions = [txn.model_dump() for txn in request.transactions]
     summary = analyze(transactions)
 
@@ -210,11 +239,8 @@ async def spending_chart(request: CategorizeRequest):
 @app.post("/extract-and-analyze")
 async def extract_and_analyze(
     file: UploadFile = File(..., description="PDF bank statement"),
+    user: User = Depends(current_active_user),
 ):
-    """
-    Full pipeline: extract → categorize → analyze.
-    Returns statement metadata + full analytics summary in one call.
-    """
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Invalid file type. Please upload a PDF file.")
 
