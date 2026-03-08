@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef } from 'react'
-import { Upload, CheckCircle, AlertCircle } from 'lucide-react'
+import { Upload, CheckCircle, AlertCircle, Download } from 'lucide-react'
 
 type UploadStatus = 'idle' | 'uploading' | 'success' | 'error'
 
@@ -62,6 +62,36 @@ async function uploadStatement(file: File): Promise<ExtractResponse> {
   }
 
   return response.json()
+}
+
+function downloadCSV(data: ExtractResponse, fileName: string) {
+  const headers = ['date', 'description', 'amount', 'balance', 'type', 'category']
+  const metaRows = [
+    `Account,${data.account_number}`,
+    `Period,${data.statement_period.start_date} to ${data.statement_period.end_date}`,
+    `Opening Balance,${data.opening_balance.toFixed(2)}`,
+    `Closing Balance,${data.closing_balance.toFixed(2)}`,
+    '',
+    headers.join(',')
+  ]
+  const rows = data.transactions.map(txn => 
+  [
+    txn.date,
+    `"${txn.description.replace(/"/g, '""')}"`,
+    txn.category,
+    txn.amount ??'',
+    txn.balance ??'',
+    txn.type,
+  ].join(',')
+  )
+  const csvContent = [...metaRows, ...rows].join('\n')
+  const blob = new Blob([csvContent], {type: 'text/csv'})
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = fileName.replace('.pdf','.csv')
+  link.click()
+  URL.revokeObjectURL(url)
 }
 
 async function analyzeTransactions(transactions: Transaction[]): Promise<AnalyticsResponse> {
@@ -297,10 +327,18 @@ export function FileUploadDropZone() {
     return (
       <div className="mt-4 border rounded-lg bg-card p-4">
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-semibold">Transactions</h2>
-          <span className="text-xs text-muted-foreground">
-            Showing {visibleRows.length} of {data.transactions.length}
-          </span>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-muted-foreground">
+              Showing {visibleRows.length} of {data.transactions.length}
+            </span>
+            <button
+              onClick={(e) => { e.stopPropagation(); downloadCSV(data, fileName) }}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-primary text-primary-foreground hover:cursor-pointer hover:underline"
+            >
+              <Download className="w-3 h-3" />
+              Download CSV
+            </button>
+          </div>
         </div>
         <div className="max-h-72 overflow-auto rounded border">
           <table className="min-w-full text-xs">
