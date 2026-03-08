@@ -12,3 +12,8 @@ chunknorris
 python-multipart
 groq
 dotenv
+
+sqlalchemy[asyncio]
+asyncpg
+alembic
+psycopg2-binary
