@@ -1,10 +1,9 @@
 import os
-import uuid
 from typing import Optional
 from dotenv import load_dotenv
 from fastapi import Depends, Request
 from fastapi_users import BaseUserManager, FastAPIUsers, IntegerIDMixin
-from fastapi_users.authentication import BearerTransport, JWTStrategy, AuthenticationBackend
+from fastapi_users.authentication import CookieTransport, JWTStrategy, AuthenticationBackend
 from fastapi_users.db import SQLAlchemyUserDatabase
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -47,17 +46,23 @@ async def get_user_manager(user_db: SQLAlchemyUserDatabase = Depends(get_user_db
 
 
 # -------------------------
-# JWT STRATEGY
+# COOKIE TRANSPORT
 # -------------------------
 
-bearer_transport = BearerTransport(tokenUrl="auth/jwt/login")
+cookie_transport = CookieTransport(
+    cookie_name="bankconverter_auth",
+    cookie_max_age=60 * 60 * 24,  # 24 hours
+    cookie_secure=False,           # Set to True in production (HTTPS only)
+    cookie_httponly=True,
+    cookie_samesite="lax",
+)
 
 def get_jwt_strategy() -> JWTStrategy:
     return JWTStrategy(secret=SECRET, lifetime_seconds=60 * 60 * 24)  # 24 hours
 
 auth_backend = AuthenticationBackend(
     name="jwt",
-    transport=bearer_transport,
+    transport=cookie_transport,
     get_strategy=get_jwt_strategy,
 )
 
