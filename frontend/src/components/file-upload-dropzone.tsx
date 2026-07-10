@@ -1,7 +1,7 @@
-'use client'
-
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Upload, CheckCircle, AlertCircle, Download } from 'lucide-react'
+import CreateAccountModal from './create-account'
+import api from '../api'
 
 type UploadStatus = 'idle' | 'uploading' | 'success' | 'error'
 
@@ -14,7 +14,8 @@ type Transaction = {
   category: string
 }
 
-type ExtractResponse = {
+type UploadResponse = {
+  statement_id: number
   account_number: string
   statement_period: {
     start_date: string
@@ -22,100 +23,76 @@ type ExtractResponse = {
   }
   opening_balance: number
   closing_balance: number
+  analytics: {
+    total_income: number
+    total_spend: number
+    net_savings: number
+    savings_rate: number
+    category_breakdown: {
+      category: string
+      amount: number
+      percentage: number
+    }[]
+  }
   transactions: Transaction[]
 }
 
-type AnalyticsResponse = {
-  total_income: number
-  total_spend: number
-  net_savings: number
-  savings_rate: number
-  category_breakdown: {
-    category: string
-    amount: number
-    percentage: number
-  }[]
+type FinancialAccount = {
+  id: number
+  name: string
 }
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
-
-async function uploadStatement(file: File): Promise<ExtractResponse> {
-  const formData = new FormData()
-  formData.append('file', file)
-
-  const response = await fetch(`${API_BASE_URL}/extract-and-categorize`, {
-    method: 'POST',
-    body: formData,
-  })
-
-  if (!response.ok) {
-    let message = `Upload failed with status ${response.status}`
-    try {
-      const errorData = await response.json()
-      if (errorData && typeof errorData === 'object' && 'detail' in errorData) {
-        message = (errorData as any).detail
-      }
-    } catch {
-      // ignore JSON parse errors, keep default message
-    }
-    throw new Error(message)
-  }
-
-  return response.json()
-}
-
-function downloadCSV(data: ExtractResponse, fileName: string) {
-  const headers = ['date', 'description', 'amount', 'balance', 'type', 'category']
+function downloadCSV(data: UploadResponse, fileName: string) {
+  const headers = ['date', 'description', 'category', 'amount', 'balance', 'type']
   const metaRows = [
     `Account,${data.account_number}`,
     `Period,${data.statement_period.start_date} to ${data.statement_period.end_date}`,
-    `Opening Balance,${data.opening_balance.toFixed(2)}`,
-    `Closing Balance,${data.closing_balance.toFixed(2)}`,
+    `Opening Balance,${data.opening_balance?.toFixed(2)}`,
+    `Closing Balance,${data.closing_balance?.toFixed(2)}`,
     '',
-    headers.join(',')
+    headers.join(','),
   ]
-  const rows = data.transactions.map(txn => 
-  [
-    txn.date,
-    `"${txn.description.replace(/"/g, '""')}"`,
-    txn.category,
-    txn.amount ??'',
-    txn.balance ??'',
-    txn.type,
-  ].join(',')
+  const rows = data.transactions.map(txn =>
+    [
+      txn.date,
+      `"${(txn.description ?? '').replace(/"/g, '""')}"`,
+      txn.category,
+      txn.amount ?? '',
+      txn.balance ?? '',
+      txn.type,
+    ].join(',')
   )
   const csvContent = [...metaRows, ...rows].join('\n')
-  const blob = new Blob([csvContent], {type: 'text/csv'})
+  const blob = new Blob([csvContent], { type: 'text/csv' })
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
-  link.download = fileName.replace('.pdf','.csv')
+  link.download = fileName.replace('.pdf', '.csv')
   link.click()
   URL.revokeObjectURL(url)
-}
-
-async function analyzeTransactions(transactions: Transaction[]): Promise<AnalyticsResponse> {
-  const response = await fetch(`${API_BASE_URL}/analyze`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ transactions }),
-  })
-
-  if (!response.ok) {
-    throw new Error(`Analysis failed with status ${response.status}`)
-  }
-
-  return response.json()
 }
 
 export function FileUploadDropZone() {
   const [isDragActive, setIsDragActive] = useState(false)
   const [status, setStatus] = useState<UploadStatus>('idle')
   const [fileName, setFileName] = useState<string>('')
-  const [data, setData] = useState<ExtractResponse | null>(null)
-  const [analytics, setAnalytics] = useState<AnalyticsResponse | null>(null)
-  const [analyticsError, setAnalyticsError] = useState<string | null>(null)
+  const [data, setData] = useState<UploadResponse | null>(null)
+  const [accounts, setAccounts] = useState<FinancialAccount[]>([])
+  const [selectedAccountId, setSelectedAccountId] = useState<number | null>(null)
+  const [accountsLoading, setAccountsLoading] = useState(true)
+  const [accountsError, setAccountsError] = useState<string | null>(null)
+  const [showCreateModal, setShowCreateModal] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    api.get('/accounts')
+      .then(res => {
+        setAccounts(res.data)
+        if (res.data.length > 0) setSelectedAccountId(res.data[0].id)
+      })
+      .catch(() => setAccountsError('Failed to load accounts.'))
+      .finally(() => setAccountsLoading(false))
+  }, [])
 
   const handleDrag = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault()
@@ -143,39 +120,33 @@ export function FileUploadDropZone() {
       return
     }
 
+    if (!selectedAccountId) {
+      setAccountsError('Please select an account before uploading.')
+      return
+    }
+
     setFileName(file.name)
     setStatus('uploading')
     setData(null)
-    setAnalytics(null)
-    setAnalyticsError(null)
-
-    let result: ExtractResponse | null = null
 
     try {
-      result = await uploadStatement(file)
-      setData(result)
+      const formData = new FormData()
+      formData.append('file', file)
+      const res = await api.post(`/accounts/${selectedAccountId}/upload`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      setData(res.data)
       setStatus('success')
     } catch (error) {
       console.error('Error uploading file:', error)
       setStatus('error')
       setData(null)
-      return
-    }
-
-    try {
-      const analyticsResult = await analyzeTransactions(result.transactions)
-      setAnalytics(analyticsResult)
-    } catch (error) {
-      console.error('Error analyzing transactions:', error)
-      setAnalyticsError('Analysis failed, but your transactions loaded successfully.')
     }
   }
 
   const reset = () => {
     setStatus('idle')
     setData(null)
-    setAnalytics(null)
-    setAnalyticsError(null)
     setFileName('')
   }
 
@@ -210,9 +181,7 @@ export function FileUploadDropZone() {
           <div className="flex flex-col items-center gap-3">
             <AlertCircle className="w-8 h-8 text-red-600" />
             <p className="text-sm font-medium text-foreground">Upload failed</p>
-            <p className="text-xs text-muted-foreground">
-              Check that your file is a PDF and try again.
-            </p>
+            <p className="text-xs text-muted-foreground">Check that your file is a valid FNB PDF and try again.</p>
             <button
               onClick={(e) => { e.stopPropagation(); reset() }}
               className="mt-2 px-4 py-2 text-sm font-medium text-primary hover:text-primary/80 transition-colors"
@@ -233,6 +202,43 @@ export function FileUploadDropZone() {
           </div>
         )
     }
+  }
+
+  const renderAccountSelector = () => {
+    if (accountsLoading) return <p className="text-xs text-muted-foreground">Loading accounts...</p>
+    if (accountsError) return <p className="text-xs text-red-500">{accountsError}</p>
+
+    return (
+      <div className="flex items-center gap-3">
+        {accounts.length === 0 ? (
+          <p className="text-xs text-muted-foreground">No accounts yet.</p>
+        ) : (
+          <div className="flex items-center gap-2">
+            <label className="text-sm font-medium text-muted-foreground whitespace-nowrap">
+              Upload to:
+            </label>
+            <select
+              value={selectedAccountId ?? ''}
+              onChange={e => setSelectedAccountId(Number(e.target.value))}
+              className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background"
+              onClick={e => e.stopPropagation()}
+            >
+              {accounts.map(account => (
+                <option key={account.id} value={account.id}>
+                  {account.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+        <button
+          onClick={e => { e.stopPropagation(); setShowCreateModal(true) }}
+          className="text-xs px-3 py-1.5 rounded-md border border-primary text-primary hover:bg-primary/5 transition-colors"
+        >
+          + New Account
+        </button>
+      </div>
+    )
   }
 
   const renderSummary = () => {
@@ -260,15 +266,8 @@ export function FileUploadDropZone() {
   }
 
   const renderAnalytics = () => {
-    if (analyticsError) {
-      return (
-        <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3">
-          <p className="text-xs text-red-600">{analyticsError}</p>
-        </div>
-      )
-    }
-
-    if (!analytics) return null
+    if (!data?.analytics) return null
+    const { analytics } = data
 
     return (
       <div className="mt-4 border rounded-lg bg-card p-4">
@@ -295,7 +294,6 @@ export function FileUploadDropZone() {
             </p>
           </div>
         </div>
-
         <div className="mt-3">
           <h3 className="text-xs font-semibold text-muted-foreground mb-2">Spending by Category</h3>
           <div className="space-y-2">
@@ -303,10 +301,7 @@ export function FileUploadDropZone() {
               <div key={item.category} className="flex items-center gap-2">
                 <div className="w-28 text-xs truncate text-muted-foreground">{item.category}</div>
                 <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
-                  <div
-                    className="h-full rounded-full bg-primary"
-                    style={{ width: `${item.percentage}%` }}
-                  />
+                  <div className="h-full rounded-full bg-primary" style={{ width: `${item.percentage}%` }} />
                 </div>
                 <div className="text-xs text-muted-foreground w-10 text-right">{item.percentage}%</div>
                 <div className="text-xs font-medium w-24 text-right">R {item.amount.toFixed(2)}</div>
@@ -320,7 +315,6 @@ export function FileUploadDropZone() {
 
   const renderTransactionTable = () => {
     if (!data?.transactions.length) return null
-
     const maxRows = 15
     const visibleRows = data.transactions.slice(0, maxRows)
 
@@ -333,7 +327,7 @@ export function FileUploadDropZone() {
             </span>
             <button
               onClick={(e) => { e.stopPropagation(); downloadCSV(data, fileName) }}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-primary text-primary-foreground hover:cursor-pointer hover:underline"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-primary text-primary-foreground hover:opacity-90"
             >
               <Download className="w-3 h-3" />
               Download CSV
@@ -379,6 +373,9 @@ export function FileUploadDropZone() {
 
   return (
     <div className="w-full max-w-4xl mx-auto">
+      <div className="mb-3">
+        {renderAccountSelector()}
+      </div>
       <div
         className={`relative rounded-lg border-2 border-dashed px-6 py-16 text-center transition-colors cursor-pointer ${
           isDragActive
@@ -400,10 +397,18 @@ export function FileUploadDropZone() {
           accept=".pdf"
         />
       </div>
-
       {renderSummary()}
       {renderAnalytics()}
       {renderTransactionTable()}
+      {showCreateModal && (
+        <CreateAccountModal
+          onClose={() => setShowCreateModal(false)}
+          onCreated={(account) => {
+            setAccounts(prev => [...prev, account])
+            setSelectedAccountId(account.id)
+          }}
+        />
+      )}
     </div>
   )
 }

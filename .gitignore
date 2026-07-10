@@ -1,6 +1,18 @@
-*.pdf
-.env
+# Node
+node_modules/
+
+# Python
 __pycache__/
-*.md
-*.json
-versions
+venv/
+.venv/
+
+# Env
+.env
+.env.*
+!.env.example
+
+# PDFs (sample statements, keep out of repo)
+*.pdf
+
+#todo file
+TODO.MD

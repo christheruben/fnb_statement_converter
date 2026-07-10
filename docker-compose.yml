@@ -1,0 +1,54 @@
+services:
+  db:
+    image: postgres:16
+    container_name: bank-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-bankuser}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-bankpass}
+      POSTGRES_DB: ${POSTGRES_DB:-bankconverter}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-bankuser}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./backend
+    container_name: bank-backend
+    ports:
+      - "5000:5000"
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-bankuser}:${POSTGRES_PASSWORD:-bankpass}@db:5432/${POSTGRES_DB:-bankconverter}
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+    command: >
+      uvicorn main:app --reload --host 0.0.0.0 --port 5000
+    restart: always
+
+  frontend:
+    build: ./frontend
+    container_name: bank-frontend
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - CHOKIDAR_USEPOLLING=true
+    command: npm run dev -- --host 0.0.0.0 --port 5173
+    restart: always
+
+volumes:
+  pgdata:

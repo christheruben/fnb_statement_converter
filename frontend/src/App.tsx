@@ -3,6 +3,8 @@ import { AuthProvider } from './AuthContext'
 import ProtectedRoute from './ProtectedRoute'
 import LoginPage from './pages/login'
 import RegisterPage from './pages/register'
+import AccountPage from './pages/account-page'
+import StatementPage from './pages/statement-page'
 import Home from './page'
 
 export default function App() {
@@ -19,6 +21,22 @@ export default function App() {
                 <main className="min-h-screen bg-background">
                   <Home />
                 </main>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/accounts/:id"
+            element={
+              <ProtectedRoute>
+                <AccountPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/statements/:id"
+            element={
+              <ProtectedRoute>
+                <StatementPage />
               </ProtectedRoute>
             }
           />
