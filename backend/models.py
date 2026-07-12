@@ -3,10 +3,18 @@ from fastapi_users_db_sqlalchemy import SQLAlchemyBaseUserTable
 from sqlalchemy import Integer, String, DateTime, Float, ForeignKey, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
+from fastapi_users_db_sqlalchemy import SQLAlchemyBaseOAuthAccountTable
 
 
 class Base(DeclarativeBase):
     pass
+
+class OAuthAccount(SQLAlchemyBaseOAuthAccountTable[int], Base):
+    __tablename__ = "oauth_accounts" 
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="cascade"), nullable=False)
+
 
 
 class User(SQLAlchemyBaseUserTable[int], Base):
@@ -16,7 +24,7 @@ class User(SQLAlchemyBaseUserTable[int], Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     # email, hashed_password, is_active, is_superuser, is_verified
     # are all provided by SQLAlchemyBaseUserTable
-
+    oauth_accounts: Mapped[list["OAuthAccount"]] = relationship("OAuthAccount", lazy="joined")
     accounts: Mapped[list["Account"]] = relationship("Account", back_populates="user", cascade="all, delete-orphan")
 
 

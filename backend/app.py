@@ -20,7 +20,7 @@ from statement_parser import (
 )
 from trans_classifier import categorize_transactions
 from analyzer import analyze, generate_pie_chart
-from auth import fastapi_users, auth_backend, current_active_user
+from auth import fastapi_users, auth_backend, current_active_user, google_oauth_client, SECRET
 from schemas import UserRead, UserCreate, UserUpdate
 from models import User
 from database import get_async_session
@@ -52,6 +52,17 @@ app.add_middleware(
 # -------------------------
 # AUTH ROUTES
 # -------------------------
+app.include_router(
+    fastapi_users.get_oauth_router(
+        google_oauth_client,
+        auth_backend,
+        SECRET,
+        associate_by_email=True,
+        is_verified_by_default=True,
+    ),
+    prefix="/auth/google",
+    tags=["auth"],
+)
 
 app.include_router(
     fastapi_users.get_auth_router(auth_backend),

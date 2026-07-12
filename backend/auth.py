@@ -6,13 +6,18 @@ from fastapi_users import BaseUserManager, FastAPIUsers, IntegerIDMixin
 from fastapi_users.authentication import CookieTransport, JWTStrategy, AuthenticationBackend
 from fastapi_users.db import SQLAlchemyUserDatabase
 from sqlalchemy.ext.asyncio import AsyncSession
+from httpx_oauth.clients.google import GoogleOAuth2
 
 from database import get_async_session
-from models import User
+from models import User, OAuthAccount
 
 load_dotenv()
 
 SECRET = os.getenv("JWT_SECRET", "changethisinproduction")
+
+GOOGLE_CLIENT_ID = os.getenv("CLIENT_ID")
+GOOGLE_CLIENT_SECRET = os.getenv("CLIENT_SECRET")
+google_oauth_client = GoogleOAuth2(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET)
 
 
 # -------------------------
@@ -20,7 +25,7 @@ SECRET = os.getenv("JWT_SECRET", "changethisinproduction")
 # -------------------------
 
 async def get_user_db(session: AsyncSession = Depends(get_async_session)):
-    yield SQLAlchemyUserDatabase(session, User)
+    yield SQLAlchemyUserDatabase(session, User, OAuthAccount)
 
 
 # -------------------------
