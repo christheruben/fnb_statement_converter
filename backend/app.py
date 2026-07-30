@@ -240,7 +240,7 @@ async def extract_statement(
     transactions = extract_transactions(markdown_text, statement_start, statement_end)
 
     if not transactions:
-        return {"message": "No transaction data found in the provided PDF.", "rows": []}
+        raise HTTPException(status_code=422, detail="Could not find transaction data in the provided PDF.")
 
     output = {
         "account_number": account_number,
@@ -323,7 +323,7 @@ async def extract_and_analyze(
     transactions = extract_transactions(markdown_text, statement_start, statement_end)
 
     if not transactions:
-        return {"message": "No transaction data found in the provided PDF.", "analytics": None}
+        raise HTTPException(status_code=422, detail="Could not find transaction data in the provided PDF.")
 
     try:
         categorized = categorize_transactions(transactions)
@@ -373,7 +373,7 @@ async def get_trends(
 
     transactions = await get_transactions_by_account(session, account_id=account_id)
     if not transactions:
-        return {"message": "No transactions found for this account."}
+        raise HTTPException(status_code=404, detail="No transactions found for this account.")
 
     txn_dicts = [
         {

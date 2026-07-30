@@ -82,6 +82,7 @@ export function FileUploadDropZone() {
   const [accountsLoading, setAccountsLoading] = useState(true)
   const [accountsError, setAccountsError] = useState<string | null>(null)
   const [showCreateModal, setShowCreateModal] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -115,6 +116,7 @@ export function FileUploadDropZone() {
   const handleFile = async (file: File) => {
     if (!file.name.toLowerCase().endsWith('.pdf')) {
       setFileName(file.name)
+      setError('Invalid file type. Please upload a PDF file.')
       setStatus('error')
       setData(null)
       return
@@ -135,10 +137,16 @@ export function FileUploadDropZone() {
       const res = await api.post(`/accounts/${selectedAccountId}/upload`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
+      if (!res.data?.transactions) {
+        throw new Error(res.data?.message || 'No transactions found in the uploaded PDF.')
+      }
       setData(res.data)
       setStatus('success')
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error uploading file:', error)
+      setError(
+        error?.response?.data?.detail || error?.message || "Upload failed. Please check that your file is a valid FNB PDF and try again."
+      )
       setStatus('error')
       setData(null)
     }
@@ -148,6 +156,7 @@ export function FileUploadDropZone() {
     setStatus('idle')
     setData(null)
     setFileName('')
+    setError(null)
   }
 
   const getStatusContent = () => {
@@ -181,7 +190,7 @@ export function FileUploadDropZone() {
           <div className="flex flex-col items-center gap-3">
             <AlertCircle className="w-8 h-8 text-red-600" />
             <p className="text-sm font-medium text-foreground">Upload failed</p>
-            <p className="text-xs text-muted-foreground">Check that your file is a valid FNB PDF and try again.</p>
+            <p className="text-xs text-muted-foreground">{error}</p>
             <button
               onClick={(e) => { e.stopPropagation(); reset() }}
               className="mt-2 px-4 py-2 text-sm font-medium text-primary hover:text-primary/80 transition-colors"
@@ -242,6 +251,7 @@ export function FileUploadDropZone() {
   }
 
   const renderSummary = () => {
+    {/* Needs error catching if the data is null*/}
     if (!data) return null
     return (
       <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
