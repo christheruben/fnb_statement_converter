@@ -16,8 +16,8 @@ from statement_parser import (
     extract_account_number,
     extract_statement_balances,
     extract_statement_period,
-    extract_transactions,
 )
+from parser import extract_transactions
 from trans_classifier import categorize_transactions
 from analyzer import analyze, generate_pie_chart
 from auth import fastapi_users, auth_backend, current_active_user
@@ -237,7 +237,7 @@ async def extract_statement(
 
     account_number = extract_account_number(markdown_text)
     opening_balance, closing_balance = extract_statement_balances(markdown_text)
-    transactions = extract_transactions(markdown_text, statement_start, statement_end)
+    transactions = extract_transactions(pdf_bytes, statement_start, statement_end)
 
     if not transactions:
         raise HTTPException(status_code=422, detail="Could not find transaction data in the provided PDF.")
