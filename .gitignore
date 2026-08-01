@@ -18,4 +18,5 @@ scratch_test.py
 *.pdf
 
 #todo file
-TODO.MDbackend/scratch_test.py
+TODO.MD
+backend/scratch_test.py
