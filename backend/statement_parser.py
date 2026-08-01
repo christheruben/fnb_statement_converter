@@ -7,10 +7,8 @@ from chunknorris.pipelines import BasePipeline
 
 
 """
-This module contains the core logic for parsing bank statements from PDF files. It includes functions for:
-- Extracting markdown text from PDFs
-- Extracting account numbers and balances
-- Parsing transaction tables, including handling multi-date rows and normalizing dates
+This module contains old parsing logic.
+Now adapted for metadata extaction in the statements.
 """
 
 # -------------------------
@@ -116,131 +114,6 @@ def extract_statement_period(markdown_text: str):
     return start_date, end_date
 
 
-# -------------------------
-# TRANSACTION PARSER
-# -------------------------
-
-DATE_PATTERN = re.compile(r"(\d{2}\s+[A-Za-z]{3})")
-
-
-def parse_amount(value: str):
-    """
-    Convert amount string into (signed_float, type)
-    """
-    if not value:
-        return None, None
-
-    value_clean = value.strip().replace(",", "")
-
-    if "Cr" in value_clean:
-        txn_type = "credit"
-    else:
-        txn_type = "debit"
-
-    number = re.search(r"[\d.]+", value_clean)
-    if not number:
-        return None, txn_type
-
-    amount = float(number.group())
-
-    if txn_type == "debit":
-        amount *= -1
-
-    return amount, txn_type
-
-
-def normalize_date(date_str, statement_start, statement_end):
-    """
-    Determine correct year dynamically using statement period.
-    If month >= start month and statement crosses year boundary,
-    assign appropriate year.
-    """
-    day_month = datetime.strptime(date_str, "%d %b")
-    month = day_month.month
-
-    if statement_start.year != statement_end.year:
-        if month >= statement_start.month:
-            year = statement_start.year
-        else:
-            year = statement_end.year
-    else:
-        year = statement_start.year
-
-    final_date = datetime.strptime(f"{date_str} {year}", "%d %b %Y")
-    return final_date.strftime("%Y-%m-%d")
-
-
-def split_multi_date_rows(date_col, description):
-    """
-    Split rows containing multiple dates in the date column.
-    """
-    dates = DATE_PATTERN.findall(date_col)
-
-    if len(dates) <= 1:
-        return [(dates[0] if dates else None, description)]
-
-    parts = DATE_PATTERN.split(date_col)
-    rows = []
-
-    for i in range(1, len(parts), 2):
-        date_part = parts[i]
-        text_part = parts[i + 1] if i + 1 < len(parts) else ""
-        combined_desc = (text_part + " " + description).strip()
-        rows.append((date_part, combined_desc))
-
-    return rows
-
-
-def extract_transactions(markdown_text: str, statement_start, statement_end):
-    lines = markdown_text.splitlines()
-
-    transactions = []
-    in_table = False
-
-    for line in lines:
-
-        if "|  Date  |  Description  |  Amount  |  Balance  |" in line:
-            in_table = True
-            continue
-
-        if not in_table:
-            continue
-
-        if line.strip().startswith("|:"):
-            continue
-
-        if not line.strip().startswith("|"):
-            break
-
-        cols = [c.strip() for c in line.strip().strip("|").split("|")]
-
-        if len(cols) < 4:
-            continue
-
-        date_col = cols[0]
-        description = cols[1]
-        amount_raw = cols[2]
-        balance_raw = cols[3]
-
-        split_rows = split_multi_date_rows(date_col, description)
-
-        for date_str, desc in split_rows:
-            if not date_str:
-                continue
-
-            normalized_date = normalize_date(date_str, statement_start, statement_end)
-            amount, txn_type = parse_amount(amount_raw)
-            balance, _ = parse_amount(balance_raw)
-
-            transactions.append({
-                "date": normalized_date,
-                "description": desc.strip(),
-                "amount": amount,
-                "balance": balance,
-                "type": txn_type
-            })
-
-    return transactions
 
 
 # -------------------------
