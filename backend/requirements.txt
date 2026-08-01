@@ -90,3 +90,4 @@ typing_extensions==4.16.0
 tzdata==2026.2
 uvicorn==0.51.0
 webencodings==0.5.1
+pdfminer.six

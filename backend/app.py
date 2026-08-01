@@ -320,7 +320,7 @@ async def extract_and_analyze(
 
     account_number = extract_account_number(markdown_text)
     opening_balance, closing_balance = extract_statement_balances(markdown_text)
-    transactions = extract_transactions(markdown_text, statement_start, statement_end)
+    transactions = extract_transactions(pdf_bytes, statement_start, statement_end)
 
     if not transactions:
         raise HTTPException(status_code=422, detail="Could not find transaction data in the provided PDF.")
