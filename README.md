@@ -15,6 +15,8 @@ React 18 (Vite) · FastAPI · PostgreSQL · SQLAlchemy (async) · Docker · JWT-
 ## Current limitations
 - Parsing is built specifically for FNB's "Easy Account" statement layout. Other FNB account types (e.g. Gold, Cheque, Premier) use different table formats and are not currently supported.
 - Auth is currently email/password via JWT (Google OAuth2 in progress)
+- Some system-generated/masked transaction lines (e.g. declined-purchase fee reversals, monthly account fees) extract with correct date, amount, and balance, but an empty description — the underlying PDF doesn't expose readable text for these specific rows via standard extraction. Planned fix: OCR fallback for rows with no extractable description. See TODO.MD for details.
+- A known `react-router-dom` CSRF advisory (GHSA-qwww-vcr4-c8h2) is currently flagged by `npm audit` due to a stale advisory range on npm's side; the app is on the officially patched version (`7.18.2`) and doesn't use the affected RSC APIs, so this is not currently exploitable.
 
 ## Setup
 
@@ -37,9 +39,11 @@ React 18 (Vite) · FastAPI · PostgreSQL · SQLAlchemy (async) · Docker · JWT-
 - `app.py` — API endpoints
 - `models.py` — SQLAlchemy models (users, accounts, statements, transactions)
 - `auth.py` — Authentication setup (fastapi-users, JWT)
-- `statement_parser.py` — FNB Easy Account PDF parsing logic
+- `statement_parser.py` — FNB statement metadata extraction (account number, statement period, opening/closing balances)
+- `parser.py` — Transaction extraction via pdfminer positional (x/y) text layout parsing
 - `trans_classifier.py` — Regex + LLM transaction categorization
 - `alembic/` — Database migrations
+- `conftest.py`, `test_app.py` — Endpoint test suite (pytest)
 
 **Frontend** (`frontend/src/`)
 - `pages/` — Route-level pages (login, register, accounts, statements)
